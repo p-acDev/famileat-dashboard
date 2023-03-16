@@ -1,9 +1,12 @@
 import pandas as pd
+import numpy as np
 import pgeocode
 nomi = pgeocode.Nominatim('fr')
 import plotly.express as px
 import streamlit as st
 st.set_page_config(layout="wide")
+import streamlit.components.v1 as components
+from pivottablejs import pivot_ui
 
 # dict for corresp on statut and name in df column name
 CORRESP_STATUT = {
@@ -81,10 +84,12 @@ def map_delivered_by_city(df, statut_livraison, livraison_condition=None):
     zoom=4,
     color=column_name,
     color_continuous_scale=px.colors.sequential.Bluered,
+    height=700,
     )
     
     
     return fig
+
 
 if __name__ == "__main__":
     
@@ -127,10 +132,23 @@ if __name__ == "__main__":
             with col2:
                 st.error(f'{n_error_colissage} livraisons avec erreur colissage, soit {round(n_error_colissage/n_delivered*100, 1)} %',
                          icon="🚨")
-        
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                n_ville_print = st.slider("Combien de villes voulez vous afficher ?", min_value=2, max_value=10)
+                bar_most_city = px.bar(df.groupby("Ville destinataire")["Ville destinataire"].count().sort_values(ascending=False)[:n_ville_print],
+                                       title=f"Les {n_ville_print} villes ayant le plus de commandes")
+                st.plotly_chart(bar_most_city, use_container_width=True)
+            
+            with col2:
+                n_solution_print = st.slider("Combien de livreurs voulez vous afficher ?", min_value=2, max_value=10)
+                bar_most_solution = px.bar(df.groupby("Solution")["Solution"].count().sort_values(ascending=False)[:n_solution_print], title=f"Les {n_solution_print} livreurs ayant le plus de commandes")
+                st.plotly_chart(bar_most_solution, use_container_width=True)
+            
         # delivered by city container
         with st.container():
-            st.markdown("## Statistiques par ville")
+            st.markdown("## Répartition géographique des livraisons")
             
             df_delivered_by_city = delivered_by_city(df, "Livré")
             df_undelivered_by_city = delivered_by_city(df, "Non Livré") # undelivered will be everything expect "Livré"
@@ -142,7 +160,7 @@ if __name__ == "__main__":
             fig_delay_by_city = map_delivered_by_city(df_delay_by_city, "Livré", "Retard")
             fig_error_by_city = map_delivered_by_city(df_error_by_city, "Livré", "Erreur colisage")
              
-                    
+              
             if st.checkbox("Voir les données des colis livrés"):
                 st.dataframe(df_delivered_by_city[["Ville destinataire", CORRESP_STATUT["Livré"], "place_name", "state_name", "county_name", "county_code"]])
 
@@ -156,12 +174,11 @@ if __name__ == "__main__":
                 st.dataframe(df_error_by_city[["Ville destinataire", CORRESP_STATUT["Erreur colisage"], "place_name", "state_name", "county_name", "county_code"]])
 
             #do the interactive plot of delivered colis
-            hist = px.histogram(df.sort_values(by="Ville destinataire"), x="Ville destinataire", title="Distribution des commandes dans les Villes")
-            st.plotly_chart(hist, use_container_width=True)
+
             
             plot_choice = st.radio(
                 "Sélectionner ce que vous voulez voir apparaître sur la carte",
-                ('Livré', 'Non livré', 'Retard', 'Erreur colisage'))
+                ('Livré', 'Non livré', 'Retard', 'Erreur colisage'), horizontal=True)
             if plot_choice == "Livré":
                 st.plotly_chart(fig_delivered_by_city, use_container_width=True)
             elif plot_choice == "Non livré":
@@ -180,6 +197,9 @@ if __name__ == "__main__":
             
             df_by_solution_delivered_delay = delivered_by_solution(df[(df["statut_livraison"] == "Livré") & (df["Retard"] == "oui")])
             df_by_solution_delivered_delay_taux = df_by_solution_delivered_delay/df_by_solution_delivered * 100
+            
+            df_by_solution_delivered_erreur = delivered_by_solution(df[(df["statut_livraison"] == "Livré") & (df["Erreur de colissage/Manque"] == "oui")])
+            df_by_solution_delivered_erreur_taux = df_by_solution_delivered_erreur/df_by_solution_delivered * 100
             
             if st.checkbox("Voir le nombre de livraison prises en charges par livreur"):
                 st.dataframe(df_by_solution)
@@ -202,4 +222,28 @@ if __name__ == "__main__":
             hist_by_solution_delay = px.histogram(df[(df["statut_livraison"] == "Livré") & (df["Retard"] == "oui")], x="Solution",
                                                   title="Nombre de livraisons en retard par livreur")
             st.plotly_chart(hist_by_solution_delay, use_container_width=True)
-              
+            
+            if st.checkbox("Voir le taux de livraison en retard par livreur"):
+                st.dataframe(df_by_solution_delivered_delay_taux.fillna(0).apply(lambda elem: f"{round(elem, 1)} %"))
+            
+            bar_taux_delivered_delay = px.bar(df_by_solution_delivered_delay_taux, title="Taux de livraison en retard par livreur")
+            st.plotly_chart(bar_taux_delivered_delay, use_container_width=True)
+            
+            if st.checkbox("Voir le nombre de livraisons avec erreur de colisage par livreur"):
+                st.dataframe(df_by_solution_delivered_erreur)        
+            
+            hist_by_solution_erreur = px.histogram(df[(df["statut_livraison"] == "Livré") & (df["Erreur de colissage/Manque"] == "oui")], x="Solution",
+                                                  title="Nombre de livraisons avec erreur colisage par livreur")
+            st.plotly_chart(hist_by_solution_erreur, use_container_width=True)
+            
+            if st.checkbox("Voir le taux de livraison avec erreur de colisage par livreur"):
+                st.dataframe(df_by_solution_delivered_erreur_taux.fillna(0).apply(lambda elem: f"{round(elem, 1)} %"))
+            
+            bar_taux_delivered_erreur = px.bar(df_by_solution_delivered_erreur_taux, title="Taux de livraison avec erreur de colisage par livreur")
+            st.plotly_chart(bar_taux_delivered_erreur, use_container_width=True)
+            
+
+            t = pivot_ui(df, menuLimit=1000)
+
+            with open(t.src) as t:
+                components.html(t.read(), height=1000, scrolling=True)
