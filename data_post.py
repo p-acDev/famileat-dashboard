@@ -25,10 +25,18 @@ def clean_data(df_raw):
     # ensure 5 digit in code postale
     df["Code postal destinataire"] = df["Code postal destinataire"].astype('str').apply(lambda elem:elem.zfill(5))
     
-    # low case for erreur colissage
+    # low case for erreur colissage and delay
     df["Erreur de colissage/Manque"] = df["Erreur de colissage/Manque"].apply(lambda elem:elem.lower())
+    df["Retard"] = df["Retard"].apply(lambda elem:elem.lower())
+    df["Retard"] = df["Retard"].replace(to_replace="vide", value="non")
     
-    df.drop(columns=["Filtre ‡ appliquer", "No de ligne"], inplace=True)
+    
+    df["Date livraison"] = pd.to_datetime(df["Date et heure de l'ÈvÈnement"], errors='coerce')
+    df["Mois livraison"] = df["Date livraison"].dt.month_name()
+    
+    df["Remis le"] = pd.to_datetime(df["Remis le"], errors='coerce')
+    
+    df.drop(columns=["Filtre ‡ appliquer", "No de ligne", "Date et heure de l'ÈvÈnement"], inplace=True)
     
     return df
     
@@ -106,6 +114,15 @@ if __name__ == "__main__":
         df_raw_data = pd.read_excel(raw_data_file)
         df = clean_data(df_raw_data)
         
+        # pivot table 
+        with st.expander("Tableau croisé dynamique interactif"):
+            df_pivot = df[["Ville destinataire", "Solution", "Retard", "Erreur de colissage/Manque", "Mois livraison"]].sort_values(by="Mois livraison", ascending=False)
+        
+            t = pivot_ui(df_pivot, menuLimit=1000)
+
+            with open(t.src) as t:
+                components.html(t.read(), height=1000, scrolling=True)
+        
         # first intro dashboard
         with st.container():
             n_comands = df.shape[0]
@@ -159,22 +176,8 @@ if __name__ == "__main__":
             fig_undelivered_by_city = map_delivered_by_city(df_undelivered_by_city, "Non Livré")
             fig_delay_by_city = map_delivered_by_city(df_delay_by_city, "Livré", "Retard")
             fig_error_by_city = map_delivered_by_city(df_error_by_city, "Livré", "Erreur colisage")
-             
               
-            if st.checkbox("Voir les données des colis livrés"):
-                st.dataframe(df_delivered_by_city[["Ville destinataire", CORRESP_STATUT["Livré"], "place_name", "state_name", "county_name", "county_code"]])
-
-            if st.checkbox("Voir les données des colis non livrés"):
-                st.dataframe(df_undelivered_by_city[["Ville destinataire", CORRESP_STATUT["Non Livré"], "place_name", "state_name", "county_name", "county_code"]])
-
-            if st.checkbox("Voir les données des livraison avec retard"):
-                st.dataframe(df_delay_by_city[["Ville destinataire", CORRESP_STATUT["Retard"], "place_name", "state_name", "county_name", "county_code"]])
-
-            if st.checkbox("Voir les données des livraisons avec erreur colisage"):
-                st.dataframe(df_error_by_city[["Ville destinataire", CORRESP_STATUT["Erreur colisage"], "place_name", "state_name", "county_name", "county_code"]])
-
             #do the interactive plot of delivered colis
-
             
             plot_choice = st.radio(
                 "Sélectionner ce que vous voulez voir apparaître sur la carte",
@@ -201,49 +204,40 @@ if __name__ == "__main__":
             df_by_solution_delivered_erreur = delivered_by_solution(df[(df["statut_livraison"] == "Livré") & (df["Erreur de colissage/Manque"] == "oui")])
             df_by_solution_delivered_erreur_taux = df_by_solution_delivered_erreur/df_by_solution_delivered * 100
             
-            if st.checkbox("Voir le nombre de livraison prises en charges par livreur"):
-                st.dataframe(df_by_solution)
+            col1, col2 = st.columns(2)
             
-            hist_by_solution = px.histogram(df, x="Solution", title="Nombre de livraisons prises en charges par livreur")
-            st.plotly_chart(hist_by_solution, use_container_width=True)
+            with col1:
+                hist_by_solution = px.histogram(df, x="Solution", title="Nombre de livraisons prises en charges par livreur")
+                st.plotly_chart(hist_by_solution, use_container_width=True)
             
-            if st.checkbox("Voir le nombre de livraisons avec succés par livreur"):
-                st.dataframe(df_by_solution_delivered)
-                
-            if st.checkbox("Voir le taux de livraison par livreur"):
-                st.dataframe(df_by_solution_delivered_taux.apply(lambda elem: f"{round(elem, 1)} %"))
-        
-            bar_taux_delivered = px.bar(df_by_solution_delivered_taux, title="Taux de livraison par livreur")
-            st.plotly_chart(bar_taux_delivered, use_container_width=True)
+            with col2:
+                bar_taux_delivered = px.bar(df_by_solution_delivered_taux, title="Taux de livraison par livreur")
+                st.plotly_chart(bar_taux_delivered, use_container_width=True)
             
-            if st.checkbox("Voir le nombre de livraisons en retard par livreur"):
-                st.dataframe(df_by_solution_delivered_delay)
+            col1, col2 = st.columns(2)
             
-            hist_by_solution_delay = px.histogram(df[(df["statut_livraison"] == "Livré") & (df["Retard"] == "oui")], x="Solution",
-                                                  title="Nombre de livraisons en retard par livreur")
-            st.plotly_chart(hist_by_solution_delay, use_container_width=True)
+            with col1:
+                hist_by_solution_delay = px.histogram(df[(df["statut_livraison"] == "Livré") & (df["Retard"] == "oui")], x="Solution",
+                                                      title="Nombre de livraisons en retard par livreur")
+                st.plotly_chart(hist_by_solution_delay, use_container_width=True)
             
-            if st.checkbox("Voir le taux de livraison en retard par livreur"):
-                st.dataframe(df_by_solution_delivered_delay_taux.fillna(0).apply(lambda elem: f"{round(elem, 1)} %"))
+            with col2:
+                bar_taux_delivered_delay = px.bar(df_by_solution_delivered_delay_taux, title="Taux de livraison en retard par livreur")
+                st.plotly_chart(bar_taux_delivered_delay, use_container_width=True)
             
-            bar_taux_delivered_delay = px.bar(df_by_solution_delivered_delay_taux, title="Taux de livraison en retard par livreur")
-            st.plotly_chart(bar_taux_delivered_delay, use_container_width=True)
+            col1, col2 = st.columns(2)
             
-            if st.checkbox("Voir le nombre de livraisons avec erreur de colisage par livreur"):
-                st.dataframe(df_by_solution_delivered_erreur)        
+            with col1:        
+                hist_by_solution_erreur = px.histogram(df[(df["statut_livraison"] == "Livré") & (df["Erreur de colissage/Manque"] == "oui")], x="Solution",
+                                                      title="Nombre de livraisons avec erreur colisage par livreur")
+                st.plotly_chart(hist_by_solution_erreur, use_container_width=True)
             
-            hist_by_solution_erreur = px.histogram(df[(df["statut_livraison"] == "Livré") & (df["Erreur de colissage/Manque"] == "oui")], x="Solution",
-                                                  title="Nombre de livraisons avec erreur colisage par livreur")
-            st.plotly_chart(hist_by_solution_erreur, use_container_width=True)
+            with col2: 
+                bar_taux_delivered_erreur = px.bar(df_by_solution_delivered_erreur_taux, title="Taux de livraison avec erreur de colisage par livreur")
+                st.plotly_chart(bar_taux_delivered_erreur, use_container_width=True)
             
-            if st.checkbox("Voir le taux de livraison avec erreur de colisage par livreur"):
-                st.dataframe(df_by_solution_delivered_erreur_taux.fillna(0).apply(lambda elem: f"{round(elem, 1)} %"))
-            
-            bar_taux_delivered_erreur = px.bar(df_by_solution_delivered_erreur_taux, title="Taux de livraison avec erreur de colisage par livreur")
-            st.plotly_chart(bar_taux_delivered_erreur, use_container_width=True)
-            
-
-            t = pivot_ui(df, menuLimit=1000)
-
-            with open(t.src) as t:
-                components.html(t.read(), height=1000, scrolling=True)
+        # stats by month
+        with st.container():
+            st.markdown("## Statistiques par mois")
+            hist_by_month = px.histogram(df[df["statut_livraison"] == "Livré"], x="Mois livraison", title="Nombres de livraison (avec succès) par mois")
+            st.plotly_chart(hist_by_month, use_container_width=True)
