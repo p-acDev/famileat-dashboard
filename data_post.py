@@ -7,6 +7,11 @@ import streamlit as st
 st.set_page_config(layout="wide")
 import streamlit.components.v1 as components
 from pivottablejs import pivot_ui
+from PIL import Image
+
+image = Image.open('./logo.png')
+
+st.image(image)
 
 # dict for corresp on statut and name in df column name
 CORRESP_STATUT = {
@@ -27,14 +32,14 @@ def clean_data(df_raw):
     
     # low case for erreur colissage and delay
     df["Erreur de colissage/Manque"] = df["Erreur de colissage/Manque"].apply(lambda elem:elem.lower())
-    df["Retard"] = df["Retard"].apply(lambda elem:elem.lower())
-    df["Retard"] = df["Retard"].replace(to_replace="vide", value="non")
-    
     
     df["Date livraison"] = pd.to_datetime(df["Date et heure de l'ÈvÈnement"], errors='coerce')
     df["Mois livraison"] = df["Date livraison"].dt.month_name()
     
     df["Remis le"] = pd.to_datetime(df["Remis le"], errors='coerce')
+    df["delta_jour"] = df["Date livraison"].dt.date - df["Remis le"].dt.date # keep only date witout time to calculate the delta day
+    # replace if any or create
+    df["Retard"] = np.where(df["delta_jour"].dt.days > 1, "oui", "non")
     
     df.drop(columns=["Filtre ‡ appliquer", "No de ligne", "Date et heure de l'ÈvÈnement"], inplace=True)
     
@@ -101,7 +106,7 @@ def map_delivered_by_city(df, statut_livraison, livraison_condition=None):
 
 if __name__ == "__main__":
     
-    st.title("Dashboard")
+    st.title("Dashboard de suivi des livraisons")
     
     # extract the data from the excel file
     st.markdown("## Fichier d'entrée")
