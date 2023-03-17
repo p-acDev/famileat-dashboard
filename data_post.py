@@ -4,10 +4,22 @@ import pgeocode
 nomi = pgeocode.Nominatim('fr')
 import plotly.express as px
 import streamlit as st
-st.set_page_config(layout="wide")
 import streamlit.components.v1 as components
 from pivottablejs import pivot_ui
 from PIL import Image
+
+st.set_page_config(
+    page_title="Famileat - Dashboard livraisons",
+    layout="wide",
+    initial_sidebar_state="expanded",
+    menu_items={
+        'Get Help': 'mailto:pacdev.ei@gmail.com',
+        'Report a bug': "mailto:pacdev.ei@gmail.com",
+        'About': """Dashboard pour suivre les statistiques de livraisons de Famileat https://www.famileat.fr.
+        Développée par pacdev https://pacdev.pythonanywhere.com."""
+    }
+)
+
 
 image = Image.open('./logo.png')
 
@@ -105,9 +117,7 @@ def map_delivered_by_city(df, statut_livraison, livraison_condition=None):
 
 
 if __name__ == "__main__":
-    
-    st.title("Dashboard de suivi des livraisons")
-    
+        
     # extract the data from the excel file
     st.markdown("## Fichier d'entrée")
     with st.expander("Upload"):
