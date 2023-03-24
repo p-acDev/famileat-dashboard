@@ -38,22 +38,21 @@ def clean_data(df_raw):
     df = df_raw.copy()
     df = df.drop_duplicates()
     
-    df["statut_livraison"] = df["Filtre ‡ appliquer"]
     # ensure 5 digit in code postale
     df["Code postal destinataire"] = df["Code postal destinataire"].astype('str').apply(lambda elem:elem.zfill(5))
     
     # low case for erreur colissage and delay
     df["Erreur de colissage/Manque"] = df["Erreur de colissage/Manque"].apply(lambda elem:elem.lower())
     
-    df["Date livraison"] = pd.to_datetime(df["Date et heure de l'ÈvÈnement"], errors='coerce')
+    df["Date livraison"] = pd.to_datetime(df["Date de livraison"], format="%Y-%m-%d", errors='coerce')
     df["Mois livraison"] = df["Date livraison"].dt.month_name()
     
-    df["Remis le"] = pd.to_datetime(df["Remis le"], errors='coerce')
+    df["Remis le"] = pd.to_datetime(df["Date de ramasse"], format="%Y-%m-%d", errors='coerce')
     df["delta_jour"] = df["Date livraison"].dt.date - df["Remis le"].dt.date # keep only date witout time to calculate the delta day
     # replace if any or create
     df["Retard"] = np.where(df["delta_jour"].dt.days > 1, "oui", "non")
     
-    df.drop(columns=["Filtre ‡ appliquer", "No de ligne", "Date et heure de l'ÈvÈnement"], inplace=True)
+    df.drop(columns=["No de ligne",], inplace=True)
     
     return df
     
@@ -61,15 +60,15 @@ def delivered_by_city(df, statut_livraison, livraison_condition=None):
     # find the number of colis per city DELIVERED or UNDELIVERED
     
     if statut_livraison == "Livré":
-        df_delivered = df[df["statut_livraison"] == "Livré"]
+        df_delivered = df[df["Status"] == "Livré"]
         if livraison_condition == "Retard":
             df_delivered = df_delivered[df_delivered["Retard"] == "oui"] # show only delay for delivered colis
         elif livraison_condition == "Erreur colisage":
             df_delivered = df_delivered[df_delivered["Erreur de colissage/Manque"] == "oui"]
     else:
-        df_delivered = df[df["statut_livraison"] != "Livré"]
+        df_delivered = df[df["Status"] != "Livré"]
     
-    series_delivered_count = df_delivered.groupby("Code postal destinataire")["statut_livraison"].count()
+    series_delivered_count = df_delivered.groupby("Code postal destinataire")["Status"].count()
     df_delivered_count = nomi.query_postal_code(series_delivered_count.index.values)
     
     if livraison_condition:
@@ -88,7 +87,7 @@ def delivered_by_city(df, statut_livraison, livraison_condition=None):
 
 def delivered_by_solution(df):
     
-    delivered_by_solution = df.groupby("Solution")["Solution"].count()
+    delivered_by_solution = df.groupby("Transporteur")["Transporteur"].count()
     delivered_by_solution.columns = ["Nombre de livraison par solution"]
     
     return delivered_by_solution
@@ -131,7 +130,7 @@ if __name__ == "__main__":
         
         # pivot table 
         with st.expander("Tableau croisé dynamique interactif"):
-            df_pivot = df[["Ville destinataire", "Solution", "Retard", "Erreur de colissage/Manque", "Mois livraison"]].sort_values(by="Mois livraison", ascending=False)
+            df_pivot = df[["Ville destinataire", "Transporteur", "Retard", "Erreur de colissage/Manque", "Mois livraison"]].sort_values(by="Mois livraison", ascending=False)
         
             t = pivot_ui(df_pivot, menuLimit=1000)
 
@@ -141,8 +140,8 @@ if __name__ == "__main__":
         # first intro dashboard
         with st.container():
             n_comands = df.shape[0]
-            n_delivered = df[df["statut_livraison"] == "Livré"].shape[0]
-            n_undelivered = df[df["statut_livraison"] != "Livré"].shape[0]
+            n_delivered = df[df["Status"] == "Livré"].shape[0]
+            n_undelivered = df[df["Status"] != "Livré"].shape[0]
             n_error_colissage = df[df["Erreur de colissage/Manque"] == "oui"].shape[0]
             n_delay = df[df["Retard"] == "oui"].shape[0]
             
@@ -175,7 +174,7 @@ if __name__ == "__main__":
             
             with col2:
                 n_solution_print = st.slider("Combien de livreurs voulez vous afficher ?", min_value=2, max_value=10)
-                bar_most_solution = px.bar(df.groupby("Solution")["Solution"].count().sort_values(ascending=False)[:n_solution_print], title=f"Les {n_solution_print} livreurs ayant le plus de commandes")
+                bar_most_solution = px.bar(df.groupby("Transporteur")["Transporteur"].count().sort_values(ascending=False)[:n_solution_print], title=f"Les {n_solution_print} livreurs ayant le plus de commandes")
                 st.plotly_chart(bar_most_solution, use_container_width=True)
             
         # delivered by city container
@@ -210,19 +209,19 @@ if __name__ == "__main__":
         with st.container():
             st.markdown("## Statistiques par livreur")
             df_by_solution = delivered_by_solution(df)
-            df_by_solution_delivered = delivered_by_solution(df[df["statut_livraison"] == "Livré"])
+            df_by_solution_delivered = delivered_by_solution(df[df["Status"] == "Livré"])
             df_by_solution_delivered_taux = df_by_solution_delivered/df_by_solution * 100
             
-            df_by_solution_delivered_delay = delivered_by_solution(df[(df["statut_livraison"] == "Livré") & (df["Retard"] == "oui")])
+            df_by_solution_delivered_delay = delivered_by_solution(df[(df["Status"] == "Livré") & (df["Retard"] == "oui")])
             df_by_solution_delivered_delay_taux = df_by_solution_delivered_delay/df_by_solution_delivered * 100
             
-            df_by_solution_delivered_erreur = delivered_by_solution(df[(df["statut_livraison"] == "Livré") & (df["Erreur de colissage/Manque"] == "oui")])
+            df_by_solution_delivered_erreur = delivered_by_solution(df[(df["Status"] == "Livré") & (df["Erreur de colissage/Manque"] == "oui")])
             df_by_solution_delivered_erreur_taux = df_by_solution_delivered_erreur/df_by_solution_delivered * 100
             
             col1, col2 = st.columns(2)
             
             with col1:
-                hist_by_solution = px.histogram(df, x="Solution", title="Nombre de livraisons prises en charges par livreur")
+                hist_by_solution = px.histogram(df, x="Transporteur", title="Nombre de livraisons prises en charges par livreur")
                 st.plotly_chart(hist_by_solution, use_container_width=True)
             
             with col2:
@@ -232,7 +231,7 @@ if __name__ == "__main__":
             col1, col2 = st.columns(2)
             
             with col1:
-                hist_by_solution_delay = px.histogram(df[(df["statut_livraison"] == "Livré") & (df["Retard"] == "oui")], x="Solution",
+                hist_by_solution_delay = px.histogram(df[(df["Status"] == "Livré") & (df["Retard"] == "oui")], x="Transporteur",
                                                       title="Nombre de livraisons en retard par livreur")
                 st.plotly_chart(hist_by_solution_delay, use_container_width=True)
             
@@ -243,7 +242,7 @@ if __name__ == "__main__":
             col1, col2 = st.columns(2)
             
             with col1:        
-                hist_by_solution_erreur = px.histogram(df[(df["statut_livraison"] == "Livré") & (df["Erreur de colissage/Manque"] == "oui")], x="Solution",
+                hist_by_solution_erreur = px.histogram(df[(df["Status"] == "Livré") & (df["Erreur de colissage/Manque"] == "oui")], x="Transporteur",
                                                       title="Nombre de livraisons avec erreur colisage par livreur")
                 st.plotly_chart(hist_by_solution_erreur, use_container_width=True)
             
@@ -254,5 +253,5 @@ if __name__ == "__main__":
         # stats by month
         with st.container():
             st.markdown("## Statistiques par mois")
-            hist_by_month = px.histogram(df[df["statut_livraison"] == "Livré"], x="Mois livraison", title="Nombres de livraison (avec succès) par mois")
+            hist_by_month = px.histogram(df[df["Status"] == "Livré"], x="Mois livraison", title="Nombres de livraison (avec succès) par mois")
             st.plotly_chart(hist_by_month, use_container_width=True)
