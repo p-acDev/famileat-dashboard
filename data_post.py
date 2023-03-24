@@ -23,7 +23,8 @@ st.set_page_config(
 
 image = Image.open('./logo.png')
 
-st.image(image)
+st.markdown("# Famileat-dashboard")
+st.image(image, width=200)
 
 # dict for corresp on statut and name in df column name
 CORRESP_STATUT = {
@@ -38,8 +39,10 @@ def clean_data(df_raw):
     df = df_raw.copy()
     df = df.drop_duplicates()
     
+    ignored_lines = df['Code postal destinataire'].isna().sum()
+    if ignored_lines >= 1:
+        st.warning(f"{ignored_lines} lignes ignorée(s) car il manque le code postal de la destination")
     # ensure 5 digit in code postale
-    st.warning(f"{df['Code postal destinataire'].isna().sum()} lignes ignorée(s) car il manque le code postal de la destination")
     df.dropna(subset=["Code postal destinataire"], inplace=True)
     df["Code postal destinataire"] = df["Code postal destinataire"].astype('str').apply(lambda elem:elem.zfill(5))
     
