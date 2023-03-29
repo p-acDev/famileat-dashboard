@@ -50,12 +50,16 @@ def clean_data(df_raw):
     df["Erreur de colissage/Manque"] = df["Erreur de colissage/Manque"].apply(lambda elem:elem.lower())
     
     df["Date livraison"] = pd.to_datetime(df["Date de livraison"], format="%Y-%m-%d", errors='coerce')
+    df["Date arrivée client"] = pd.to_datetime(df["Date arrivée client"], format="%Y-%m-%d", errors='coerce')
     df["Mois livraison"] = df["Date livraison"].dt.month_name()
     
     df["Remis le"] = pd.to_datetime(df["Date de ramasse"], format="%Y-%m-%d", errors='coerce')
     df["delta_jour"] = df["Date livraison"].dt.date - df["Remis le"].dt.date # keep only date witout time to calculate the delta day
+    df["delta_jour_residence"] = df["Date arrivée client"].dt.date - df["Date livraison"].dt.date
+    df["Retard residence"] = np.where(df["delta_jour_residence"].dt.days > 1, "oui", "non")
     # replace if any or create
     df["Retard"] = np.where(df["delta_jour"].dt.days > 1, "oui", "non")
+    
     
     df.drop(columns=["No de ligne",], inplace=True)
     
@@ -150,7 +154,7 @@ if __name__ == "__main__":
             
             # pivot table 
             with st.expander("Tableau croisé dynamique interactif"):
-                df_pivot = df[["Ville destinataire", "Transporteur", "Retard", "Erreur de colissage/Manque", "Mois livraison"]].sort_values(by="Mois livraison", ascending=False)
+                df_pivot = df[["Ville destinataire", "Transporteur", "Résidence", "Retard", "Retard residence", "Erreur de colissage/Manque", "Mois livraison"]].sort_values(by="Mois livraison", ascending=False)
             
                 t = pivot_ui(df_pivot, menuLimit=1000)
 
@@ -225,8 +229,28 @@ if __name__ == "__main__":
                 elif plot_choice == "Erreur colisage":
                     st.plotly_chart(fig_error_by_city, use_container_width=True)
             
+            # stats by residence
+            with st.container():
+                st.markdown("## Statistiques par résidence")
+                df_residence = df.copy()
+                df_residence.replace(to_replace=np.nan, value="particuliers", inplace=True)
+                tab1, tab2 = st.tabs(["Pie chart", "Hist."])
+                with tab1:
+                    pie_by_residence = px.pie(df_residence, names="Résidence", title="% du nombre total de livraisons par résidence")
+                    st.plotly_chart(pie_by_residence, use_container_width=True)
+                with tab2:
+                    hist_by_residence = px.histogram(df_residence, x="Résidence", title="Nombre de livraisons par résidence")
+                    st.plotly_chart(hist_by_residence, use_container_width=True)
+                
+                df_residence_pv_mmv = df.copy()
+                df_residence_pv_mmv = df_residence_pv_mmv[df_residence_pv_mmv["Résidence"].isin(["PV", "MMV"])]
+                pie_retard_residence = px.histogram(df_residence_pv_mmv, x="Résidence", color="Résidence", pattern_shape="Retard residence" ,title="Retard par résidences PV & MMV")
+                
+                st.plotly_chart(pie_retard_residence)
+                
             # stats by solution
             with st.container():
+                
                 st.markdown("## Statistiques par livreur")
                 df_by_solution = delivered_by_solution(df)
                 df_by_solution_delivered = delivered_by_solution(df[df["Status"] == "Livré"])
@@ -241,34 +265,68 @@ if __name__ == "__main__":
                 col1, col2 = st.columns(2)
                 
                 with col1:
-                    hist_by_solution = px.histogram(df, x="Transporteur", title="Nombre de livraisons prises en charges par livreur")
-                    st.plotly_chart(hist_by_solution, use_container_width=True)
+                    tab1, tab2 = st.tabs(["Pie chart", "Hist."])
+                    with tab1:
+                        pie_by_solution = px.pie(df, names="Transporteur", title="% du nombre total de livraisons prises en charges par livreur")
+                        st.plotly_chart(pie_by_solution, use_container_width=True)
+                    with tab2:
+                        hist_by_solution = px.histogram(df, x="Transporteur", title="Nombre de livraisons prises en charges par livreur")
+                        
+                        st.plotly_chart(hist_by_solution, use_container_width=True)
+                    
                 
                 with col2:
-                    bar_taux_delivered = px.bar(df_by_solution_delivered_taux, title="Taux de livraison par livreur")
-                    st.plotly_chart(bar_taux_delivered, use_container_width=True)
-                
+                    tab1, tab2 = st.tabs(["Hist.", " "])                    
+                    with tab1:
+                        bar_taux_delivered = px.bar(df_by_solution_delivered_taux, title="Taux de livraison par livreur")
+                        bar_taux_delivered.update_layout(yaxis_range=[0, 100])
+                        bar_taux_delivered.update_yaxes(title="%")
+                        st.plotly_chart(bar_taux_delivered, use_container_width=True)
+
                 col1, col2 = st.columns(2)
                 
                 with col1:
-                    hist_by_solution_delay = px.histogram(df[(df["Status"] == "Livré") & (df["Retard"] == "oui")], x="Transporteur",
-                                                        title="Nombre de livraisons en retard par livreur")
-                    st.plotly_chart(hist_by_solution_delay, use_container_width=True)
+                    tab1, tab2 = st.tabs(["Pie chart", "Hist."])
+                    with tab1:
+                        pie_by_solution_delay= px.pie(df[(df["Status"] == "Livré") & (df["Retard"] == "oui")], names="Transporteur",
+                                                      title="% du nombre total de livraisons en retard par livreur")
+                        
+                        st.plotly_chart(pie_by_solution_delay, use_container_width=True)
+                    
+                    with tab2:
+                        hist_by_solution_delay = px.histogram(df[(df["Status"] == "Livré") & (df["Retard"] == "oui")], x="Transporteur",
+                                                            title="Nombre de livraisons en retard par livreur")
+                        st.plotly_chart(hist_by_solution_delay, use_container_width=True)
                 
                 with col2:
-                    bar_taux_delivered_delay = px.bar(df_by_solution_delivered_delay_taux, title="Taux de livraison en retard par livreur")
-                    st.plotly_chart(bar_taux_delivered_delay, use_container_width=True)
+                    tab1, tab2 = st.tabs(["Hist.", " "])
+                    with tab1:
+                        bar_taux_delivered_delay = px.bar(df_by_solution_delivered_delay_taux, title="Taux de livraison en retard par livreur")
+                        bar_taux_delivered_delay.update_layout(yaxis_range=[0, 100])
+                        bar_taux_delivered_delay.update_yaxes(title="%")
+                        st.plotly_chart(bar_taux_delivered_delay, use_container_width=True)
                 
                 col1, col2 = st.columns(2)
                 
                 with col1:        
-                    hist_by_solution_erreur = px.histogram(df[(df["Status"] == "Livré") & (df["Erreur de colissage/Manque"] == "oui")], x="Transporteur",
-                                                        title="Nombre de livraisons avec erreur colisage par livreur")
-                    st.plotly_chart(hist_by_solution_erreur, use_container_width=True)
+                    tab1, tab2 = st.tabs(["Pie chart", "Hist."])
+                    with tab1:
+                        pie_by_solution_erreur = px.pie(df[(df["Status"] == "Livré") & (df["Erreur de colissage/Manque"] == "oui")], names="Transporteur",
+                                                        title="% du nombre total de livraisons avec erreur colisage par livreur")
+                        st.plotly_chart(pie_by_solution_erreur, use_container_width=True)
+                    
+                    with tab2:
+                        hist_by_solution_erreur = px.histogram(df[(df["Status"] == "Livré") & (df["Erreur de colissage/Manque"] == "oui")], x="Transporteur",
+                                                            title="Nombre de livraisons avec erreur colisage par livreur")
+                        st.plotly_chart(hist_by_solution_erreur, use_container_width=True)
                 
                 with col2: 
-                    bar_taux_delivered_erreur = px.bar(df_by_solution_delivered_erreur_taux, title="Taux de livraison avec erreur de colisage par livreur")
-                    st.plotly_chart(bar_taux_delivered_erreur, use_container_width=True)
+                    tab1, tab2 = st.tabs(["Hist", " "])
+                    with tab1:
+                        bar_taux_delivered_erreur = px.bar(df_by_solution_delivered_erreur_taux, title="Taux de livraison avec erreur de colisage par livreur")
+                        bar_taux_delivered_erreur.update_layout(yaxis_range=[0, 100])
+                        bar_taux_delivered_erreur.update_yaxes(title="%")
+                        st.plotly_chart(bar_taux_delivered_erreur, use_container_width=True)
                 
             # stats by month
             with st.container():
